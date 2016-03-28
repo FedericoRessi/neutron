@@ -13,6 +13,32 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+#  - vhost_user_ovs_plug: Boolean used to inform Nova that the ovs plug
+#                         method should be used when binding the
+#                         vhost user vif.
+VHOST_USER_OVS_PLUG = 'vhostuser_ovs_plug'
+
+#  - vhost_user_mode: String value used to declare how the mode of a
+#                     vhost-user socket
+VHOST_USER_MODE = 'vhostuser_mode'
+#  - server: socket created by hypervisor VHOST_USER_MODE_SERVER = 'server'
+#  - client: socket created by vswitch
+VHOST_USER_MODE_CLIENT = 'client'
+
+#  - vhostuser_socket String value used to declare the vhostuser socket name VHOST_USER_SOCKET = 'vhostuser_socket'
+VHOST_USER_SOCKET = 'vhostuser_socket'
+
+#  - vif_type_vhost_user: vif type to enable use of the qemu vhost-user vif VIF_TYPE_VHOST_USER = 'vhostuser'
+VIF_TYPE_VHOST_USER = 'vhostuser'
+
+# default location for vhostuser sockets this should match the run dir used when compiling ovs or # the -vhost_sock_dir argument must be passed to the ovsvswitchd process when starting the switch.
+VHOSTUSER_SOCKET_DIR = '/var/run/openvswitch'
+# prefix for ovs port
+PORT_PREFIX = 'vhu'
+
+import os
+import copy
+
 from networking_odl.common import constants as odl_const
 from networking_odl.ml2 import mech_driver
 from oslo_config import cfg
@@ -59,8 +85,8 @@ class OpenDaylightMechanismDriver(api.MechanismDriver):
         for opt in required_opts:
             if not getattr(self, opt):
                 raise cfg.RequiredOptError(opt, 'ml2_odl')
-        self.vif_type = portbindings.VIF_TYPE_OVS
-        self.vif_details = {portbindings.CAP_PORT_FILTER: True}
+        self.vif_type = 'vhostuser'
+        self.vif_details = {portbindings.CAP_PORT_FILTER: False, VHOST_USER_MODE: VHOST_USER_MODE_CLIENT, VHOST_USER_OVS_PLUG: True}
         self.odl_drv = mech_driver.OpenDaylightDriver()
 
     # Postcommit hooks are used to trigger synchronization.
@@ -99,9 +125,12 @@ class OpenDaylightMechanismDriver(api.MechanismDriver):
                    'network': context.network.current['id']})
         for segment in context.segments_to_bind:
             if self.check_segment(segment):
+                sock_name = (PORT_PREFIX + context.current['id'])[:14]
+                vif_details = copy.copy(self.vif_details)
+                vif_details[VHOST_USER_SOCKET] = os.path.join(VHOSTUSER_SOCKET_DIR, sock_name)
                 context.set_binding(segment[api.ID],
                                     self.vif_type,
-                                    self.vif_details,
+                                    vif_details,
                                     status=n_const.PORT_STATUS_ACTIVE)
                 LOG.debug("Bound using segment: %s", segment)
                 return
